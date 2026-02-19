@@ -12,7 +12,7 @@ function Header() {
         <header className="site-header">
             <div className="logo">
                 <Link to="/">
-                    <img src="./Images/Logo/logo.png" alt="logo" className="logo-img-customer" />
+                    <img src="/Images/Logo/logo.png" alt="logo" className="logo-img-customer" />
                     Sri Bala Fashion
                 </Link>
             </div>

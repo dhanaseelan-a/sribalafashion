@@ -357,7 +357,7 @@ function AdminDashboard() {
             {/* Admin Top Bar */}
             <div className="admin-topbar">
                 <div className="admin-topbar-brand">
-                    <img src="./Images/Logo/logo.png" alt="Sri Bala Fashion Logo" className="admin-topbar-logo" />
+                    <img src="/Images/Logo/logo.png" alt="Sri Bala Fashion Logo" className="admin-topbar-logo" />
                     <span>Sri Bala Fashion</span>
                     <span className="admin-topbar-badge">ADMIN</span>
                 </div>
