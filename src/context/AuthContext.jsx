@@ -4,6 +4,43 @@ import { supabase } from '../supabaseClient';
 
 const AuthContext = createContext(null);
 
+// Maximum time to wait for auth before showing the page anyway
+const MAX_AUTH_WAIT_MS = 3000;
+
+// Branded loading screen shown while auth initializes (max 3s)
+function AuthLoadingScreen() {
+    return (
+        <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '100vh',
+            background: 'linear-gradient(135deg, #FFF8F0 0%, #FFF0E6 100%)',
+            fontFamily: "'Playfair Display', serif"
+        }}>
+            <div style={{
+                fontSize: '1.5rem',
+                color: '#6B0F2A',
+                fontWeight: 600,
+                marginBottom: '1rem',
+                letterSpacing: '0.02em'
+            }}>
+                Sri Bala Fashion
+            </div>
+            <div style={{
+                width: '36px',
+                height: '36px',
+                border: '3px solid #F3E8DC',
+                borderTopColor: '#6B0F2A',
+                borderRadius: '50%',
+                animation: 'authSpin 0.8s linear infinite'
+            }} />
+            <style>{`@keyframes authSpin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+    );
+}
+
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [token, setToken] = useState(null);
@@ -40,15 +77,27 @@ export const AuthProvider = ({ children }) => {
         let mounted = true;
 
         const initAuth = async () => {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.access_token && mounted) {
-                setToken(session.access_token);
-                await syncUserToBackend(session.access_token);
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (session?.access_token && mounted) {
+                    setToken(session.access_token);
+                    // Don't block page render — sync in background
+                    syncUserToBackend(session.access_token);
+                }
+            } catch (err) {
+                console.error('Auth init failed:', err);
+            } finally {
+                if (mounted) setLoading(false);
             }
-            if (mounted) setLoading(false);
         };
 
         initAuth();
+
+        // Safety net: ALWAYS stop loading after MAX_AUTH_WAIT_MS
+        // This prevents blank screen even if Supabase hangs
+        const timeout = setTimeout(() => {
+            if (mounted) setLoading(false);
+        }, MAX_AUTH_WAIT_MS);
 
         // Listen for auth state changes (login, logout, token refresh)
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -69,6 +118,7 @@ export const AuthProvider = ({ children }) => {
 
         return () => {
             mounted = false;
+            clearTimeout(timeout);
             subscription.unsubscribe();
         };
     }, [syncUserToBackend]);
@@ -128,7 +178,7 @@ export const AuthProvider = ({ children }) => {
 
     return (
         <AuthContext.Provider value={{ user, token, loginWithGoogle, logout, loading }}>
-            {!loading && children}
+            {loading ? <AuthLoadingScreen /> : children}
         </AuthContext.Provider>
     );
 };

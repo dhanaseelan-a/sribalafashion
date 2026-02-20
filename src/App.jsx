@@ -6,7 +6,7 @@ import { DataSyncProvider } from './context/DataSyncContext';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import { FiTool, FiClock } from 'react-icons/fi';
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, Component } from 'react';
 
 // Eagerly loaded — needed on first paint
 import Home from './pages/Home';
@@ -14,15 +14,70 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import NotFound from './pages/NotFound';
 
+// Retry wrapper: if a lazy chunk fails (e.g. after redeploy), retry once
+function lazyRetry(importFn) {
+    return lazy(() =>
+        importFn().catch(() => {
+            // Wait briefly then retry — handles Vercel cache misses after redeploy
+            return new Promise(resolve => setTimeout(resolve, 1500))
+                .then(() => importFn());
+        })
+    );
+}
+
 // Lazy loaded — only downloaded when user navigates to them
-const Shop = lazy(() => import('./pages/Shop'));
-const ProductDetail = lazy(() => import('./pages/ProductDetail'));
-const Cart = lazy(() => import('./pages/Cart'));
-const Checkout = lazy(() => import('./pages/Checkout'));
-const OrderSuccess = lazy(() => import('./pages/OrderSuccess'));
-const MyOrders = lazy(() => import('./pages/MyOrders'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
-const AdminLogin = lazy(() => import('./pages/AdminLogin'));
+const Shop = lazyRetry(() => import('./pages/Shop'));
+const ProductDetail = lazyRetry(() => import('./pages/ProductDetail'));
+const Cart = lazyRetry(() => import('./pages/Cart'));
+const Checkout = lazyRetry(() => import('./pages/Checkout'));
+const OrderSuccess = lazyRetry(() => import('./pages/OrderSuccess'));
+const MyOrders = lazyRetry(() => import('./pages/MyOrders'));
+const AdminDashboard = lazyRetry(() => import('./pages/AdminDashboard'));
+const AdminLogin = lazyRetry(() => import('./pages/AdminLogin'));
+
+// Error Boundary: catches JS crashes and shows a recovery screen instead of blank page
+class ErrorBoundary extends Component {
+    constructor(props) {
+        super(props);
+        this.state = { hasError: false };
+    }
+    static getDerivedStateFromError() {
+        return { hasError: true };
+    }
+    componentDidCatch(error, info) {
+        console.error('App crashed:', error, info);
+    }
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'center',
+                    justifyContent: 'center', minHeight: '100vh',
+                    background: 'linear-gradient(135deg, #FFF8F0 0%, #FFF0E6 100%)',
+                    fontFamily: "'Inter', sans-serif", padding: '2rem', textAlign: 'center'
+                }}>
+                    <div style={{ fontSize: '1.5rem', color: '#6B0F2A', fontWeight: 600, marginBottom: '0.5rem' }}>
+                        Something went wrong
+                    </div>
+                    <p style={{ color: '#666', marginBottom: '1.5rem', maxWidth: '360px' }}>
+                        We're sorry for the inconvenience. Please reload the page.
+                    </p>
+                    <button
+                        onClick={() => window.location.reload()}
+                        style={{
+                            padding: '0.75rem 2rem', background: '#6B0F2A', color: '#fff',
+                            border: 'none', borderRadius: '8px', fontSize: '1rem',
+                            cursor: 'pointer', fontWeight: 500
+                        }}
+                    >
+                        Reload Page
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
 
 // Lightweight loading spinner
 function PageLoader() {
@@ -139,17 +194,19 @@ function AppContent() {
 
 function App() {
     return (
-        <AuthProvider>
-            <CartProvider>
-                <MaintenanceProvider>
-                    <DataSyncProvider>
-                        <Router>
-                            <AppContent />
-                        </Router>
-                    </DataSyncProvider>
-                </MaintenanceProvider>
-            </CartProvider>
-        </AuthProvider>
+        <ErrorBoundary>
+            <AuthProvider>
+                <CartProvider>
+                    <MaintenanceProvider>
+                        <DataSyncProvider>
+                            <Router>
+                                <AppContent />
+                            </Router>
+                        </DataSyncProvider>
+                    </MaintenanceProvider>
+                </CartProvider>
+            </AuthProvider>
+        </ErrorBoundary>
     );
 }
 
