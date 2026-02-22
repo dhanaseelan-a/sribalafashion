@@ -4,6 +4,27 @@ import axios from 'axios';
 import { GiRing, GiFlowerPot, GiNecklace } from 'react-icons/gi';
 import { FiTruck, FiShield, FiAward, FiArrowRight, FiAlertCircle } from 'react-icons/fi';
 
+// Prefetch products into sessionStorage so Shop page loads instantly
+function prefetchProducts() {
+    const CACHE_KEY = 'sbf_products_cache';
+    try {
+        const raw = sessionStorage.getItem(CACHE_KEY);
+        if (raw) {
+            const cache = JSON.parse(raw);
+            if (cache['__ALL__'] && Date.now() - cache['__ALL__'].ts < 3 * 60 * 1000) return;
+        }
+    } catch { /* ignore */ }
+    axios.get('/api/products').then(res => {
+        try {
+            let cache = {};
+            const raw = sessionStorage.getItem(CACHE_KEY);
+            if (raw) cache = JSON.parse(raw);
+            cache['__ALL__'] = { data: res.data, ts: Date.now() };
+            sessionStorage.setItem(CACHE_KEY, JSON.stringify(cache));
+        } catch { /* ignore */ }
+    }).catch(() => { });
+}
+
 function Home() {
     const [content, setContent] = useState(null);
 
@@ -15,6 +36,7 @@ function Home() {
 
     useEffect(() => {
         fetchContent();
+        prefetchProducts(); // Pre-warm products cache so Shop page loads instantly
 
         const handleVisibility = () => {
             if (document.visibilityState === 'visible') {
