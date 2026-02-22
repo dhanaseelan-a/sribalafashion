@@ -4972,3 +4972,11 @@ h4 {
     flex-wrap: wrap;
   }
 }
+
+/* ============================================================
+   SHIMMER / SKELETON LOADING ANIMATION
+   ============================================================ */
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

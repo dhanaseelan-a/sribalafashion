@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FiArrowRight } from 'react-icons/fi';
 
 function ProductCard({ product }) {
+    const [imgLoaded, setImgLoaded] = useState(false);
+    const [imgError, setImgError] = useState(false);
+
     const getCategoryBadge = (category) => {
         const badges = {
             'Bangles': 'badge-gold',
@@ -20,6 +24,9 @@ function ProductCard({ product }) {
         ? Math.round(basePrice * (1 - discount / 100))
         : basePrice;
 
+    const fallbackSrc = `https://placehold.co/400x280/6B0F2A/D4A843?text=${encodeURIComponent(product.name)}`;
+    const imageSrc = imgError ? fallbackSrc : (product.imageUrl || fallbackSrc);
+
     return (
         <div className="product-card">
             <div className="product-card-image">
@@ -31,9 +38,25 @@ function ProductCard({ product }) {
                         {discount}% OFF
                     </span>
                 )}
+                {!imgLoaded && (
+                    <div className="img-skeleton" style={{
+                        width: '100%', aspectRatio: '10/7',
+                        background: 'linear-gradient(110deg, #f0e6d6 30%, #f5efe5 50%, #f0e6d6 70%)',
+                        backgroundSize: '200% 100%',
+                        animation: 'shimmer 1.5s infinite',
+                        borderRadius: '8px 8px 0 0'
+                    }} />
+                )}
                 <img
-                    src={product.imageUrl || `https://placehold.co/400x280/6B0F2A/D4A843?text=${encodeURIComponent(product.name)}`}
+                    src={imageSrc}
                     alt={product.name}
+                    loading="lazy"
+                    decoding="async"
+                    width={400}
+                    height={280}
+                    onLoad={() => setImgLoaded(true)}
+                    onError={() => setImgError(true)}
+                    style={{ opacity: imgLoaded ? 1 : 0, transition: 'opacity 0.3s ease' }}
                 />
             </div>
             <div className="product-card-body">
