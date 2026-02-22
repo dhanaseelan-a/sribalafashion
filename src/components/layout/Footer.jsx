@@ -26,9 +26,9 @@ function Footer() {
         return () => document.removeEventListener('visibilitychange', handleVisibility);
     }, [fetchContent]);
 
-    const address = content?.footerAddress || '123 Fashion Street, Chennai, India';
-    const phone = content?.footerPhone || '+91 98765 43210';
-    const email = content?.footerEmail || 'hello@sribalafashion.com';
+    const address = content?.footerAddress || '13, Suri parai, erode,tamilnadu';
+    const phone = content?.footerPhone || '+91 8438534305';
+    const email = content?.footerEmail || 'balafashion1100@gmail.com';
     const instagram = content?.footerInstagram || '#';
     const facebook = content?.footerFacebook || '#';
     const twitter = content?.footerTwitter || '#';
