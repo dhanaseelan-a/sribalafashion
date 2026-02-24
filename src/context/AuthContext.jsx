@@ -52,12 +52,20 @@ export const AuthProvider = ({ children }) => {
         if (syncingRef.current) return;
         syncingRef.current = true;
         try {
+            // Extract full name from JWT payload to send to backend
+            let fullName = '';
+            try {
+                const payload = JSON.parse(atob(accessToken.split('.')[1]));
+                const meta = payload.user_metadata || {};
+                fullName = meta.full_name || meta.name || '';
+            } catch { /* ignore decode errors */ }
+
             const response = await axios.post('/api/auth/google',
-                { accessToken },
+                { accessToken, fullName },
                 { headers: { Authorization: `Bearer ${accessToken}` } }
             );
-            const { email, role, fullName } = response.data;
-            setUser({ email, role, fullName });
+            const { email, role, fullName: responseName } = response.data;
+            setUser({ email, role, fullName: responseName });
         } catch (err) {
             console.error('Failed to sync user to backend:', err);
             // Still set basic user info from token if backend sync fails
