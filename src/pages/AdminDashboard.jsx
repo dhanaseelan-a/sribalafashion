@@ -55,14 +55,11 @@ function AdminDashboard() {
     const navigate = useNavigate();
 
     useEffect(() => {
-        if (token) fetchProducts();
-        fetchHomeContent();
-    }, [token]);
-
-    useEffect(() => {
         if (!token) return;
+        if (activeTab === 'products') fetchProducts();
         if (activeTab === 'orders') fetchOrders();
         if (activeTab === 'users') fetchUsers();
+        if (activeTab === 'home') fetchHomeContent();
     }, [activeTab, token]);
 
     // Re-fetch when page changes
