@@ -6,7 +6,8 @@ import ProductCard from '../components/product/ProductCard';
 
 // Simple in-memory + sessionStorage cache (survives same-tab navigation, clears on tab close)
 const CACHE_KEY = 'sbf_products_cache';
-const CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+const CACHE_TTL = 3 * 60 * 1000; // 3 minutes — cache is considered expired after this
+const CACHE_FRESH_TTL = 60 * 1000; // 1 minute — skip network fetch entirely if cache is this fresh
 
 function getCachedProducts(category) {
     try {
@@ -16,7 +17,7 @@ function getCachedProducts(category) {
         const key = category || '__ALL__';
         const entry = cache[key];
         if (entry && Date.now() - entry.ts < CACHE_TTL) {
-            return entry.data;
+            return entry;  // Return full entry with timestamp
         }
     } catch { /* ignore */ }
     return null;
@@ -68,27 +69,22 @@ function SkeletonCard() {
 }
 
 function Shop() {
-    const [products, setProducts] = useState(() => getCachedProducts('') || []);
-    const [loading, setLoading] = useState(() => !getCachedProducts(''));
+    // Initialize from cache immediately — no loading state if cache exists
     const [searchParams, setSearchParams] = useSearchParams();
     const category = searchParams.get('category') || '';
+    const cachedEntry = getCachedProducts(category);
+    const [products, setProducts] = useState(cachedEntry?.data || []);
+    const [loading, setLoading] = useState(!cachedEntry);
     const abortRef = useRef(null);
 
-    const fetchProducts = useCallback(async () => {
-        // Check cache first
-        const cached = getCachedProducts(category);
-        if (cached) {
-            setProducts(cached);
-            setLoading(false);
-            return;
-        }
-
-        setLoading(true);
-
+    const fetchProducts = useCallback(async (showLoading) => {
         // Cancel previous in-flight request
         if (abortRef.current) abortRef.current.abort();
         const controller = new AbortController();
         abortRef.current = controller;
+
+        // Only show loading skeleton if no cached data at all
+        if (showLoading) setLoading(true);
 
         try {
             const url = category ? `/api/products?category=${category}` : '/api/products';
@@ -105,15 +101,23 @@ function Shop() {
     }, [category]);
 
     useEffect(() => {
-        // Instantly show cached data if available, then still fetch fresh
         const cached = getCachedProducts(category);
+
         if (cached) {
-            setProducts(cached);
+            // Show cached data instantly
+            setProducts(cached.data);
             setLoading(false);
+
+            // If cache is very fresh (<1 min), skip network entirely
+            if (Date.now() - cached.ts < CACHE_FRESH_TTL) return;
+
+            // Cache is stale (1–3 min): silent background refresh (no loading spinner)
+            fetchProducts(false);
         } else {
+            // No cache: show skeleton and fetch
             setLoading(true);
+            fetchProducts(true);
         }
-        fetchProducts();
 
         return () => {
             if (abortRef.current) abortRef.current.abort();

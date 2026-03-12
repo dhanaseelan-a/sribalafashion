@@ -41,40 +41,51 @@ function AuthLoadingScreen() {
     );
 }
 
+// Extract basic user info from a JWT token (instant, no network call)
+function getUserFromJwt(accessToken) {
+    try {
+        const payload = JSON.parse(atob(accessToken.split('.')[1]));
+        const meta = payload.user_metadata || {};
+        return {
+            email: payload.email || meta.email || payload.sub,
+            role: 'CUSTOMER', // Default role; backend sync will update if ADMIN
+            fullName: meta.full_name || meta.name || ''
+        };
+    } catch {
+        return null;
+    }
+}
+
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
     const [token, setToken] = useState(null);
     const [loading, setLoading] = useState(true);
     const syncingRef = useRef(false);
+    const initDoneRef = useRef(false); // Prevents duplicate sync from initAuth + onAuthStateChange
 
-    // Sync user to backend (find/create in DB) and get role
+    // Sync user to backend (find/create in DB) and get role — runs in background
     const syncUserToBackend = useCallback(async (accessToken) => {
         if (syncingRef.current) return;
         syncingRef.current = true;
         try {
             // Extract full name from JWT payload to send to backend
-            let fullName = '';
-            try {
-                const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                const meta = payload.user_metadata || {};
-                fullName = meta.full_name || meta.name || '';
-            } catch { /* ignore decode errors */ }
+            const jwtUser = getUserFromJwt(accessToken);
+            const fullName = jwtUser?.fullName || '';
 
             const response = await axios.post('/api/auth/google',
                 { accessToken, fullName },
                 { headers: { Authorization: `Bearer ${accessToken}` } }
             );
             const { email, role, fullName: responseName } = response.data;
-            setUser({ email, role, fullName: responseName });
+            // Update user with backend data (mainly for role)
+            setUser(prev => ({
+                email: email || prev?.email,
+                role: role || prev?.role || 'CUSTOMER',
+                fullName: responseName || prev?.fullName
+            }));
         } catch (err) {
             console.error('Failed to sync user to backend:', err);
-            // Still set basic user info from token if backend sync fails
-            try {
-                const payload = JSON.parse(atob(accessToken.split('.')[1]));
-                setUser({ email: payload.email || payload.sub, role: 'CUSTOMER', fullName: '' });
-            } catch {
-                // Token decode failed
-            }
+            // JWT user was already set; no action needed on failure
         } finally {
             syncingRef.current = false;
         }
@@ -89,7 +100,11 @@ export const AuthProvider = ({ children }) => {
                 const { data: { session } } = await supabase.auth.getSession();
                 if (session?.access_token && mounted) {
                     setToken(session.access_token);
-                    // Don't block page render — sync in background
+                    // Set user instantly from JWT (no network wait)
+                    const jwtUser = getUserFromJwt(session.access_token);
+                    if (jwtUser) setUser(jwtUser);
+                    initDoneRef.current = true;
+                    // Sync role from backend in background (non-blocking)
                     syncUserToBackend(session.access_token);
                 }
             } catch (err) {
@@ -109,13 +124,23 @@ export const AuthProvider = ({ children }) => {
 
         // Listen for auth state changes (login, logout, token refresh)
         const { data: { subscription } } = supabase.auth.onAuthStateChange(
-            async (event, session) => {
+            (event, session) => {
                 if (!mounted) return;
 
                 if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
                     if (session?.access_token) {
                         setToken(session.access_token);
-                        await syncUserToBackend(session.access_token);
+                        // Set user instantly from JWT (no waiting for backend)
+                        const jwtUser = getUserFromJwt(session.access_token);
+                        if (jwtUser) setUser(jwtUser);
+                        setLoading(false);
+                        // Skip duplicate sync if initAuth already handled this session
+                        if (initDoneRef.current && event === 'SIGNED_IN') {
+                            initDoneRef.current = false; // Reset for future events
+                            return;
+                        }
+                        // Sync role from backend in background (non-blocking)
+                        syncUserToBackend(session.access_token);
                     }
                 } else if (event === 'SIGNED_OUT') {
                     setToken(null);
@@ -162,15 +187,53 @@ export const AuthProvider = ({ children }) => {
         };
     }, [token]);
 
+    // Popup-based Google OAuth — avoids full-page redirect that triggers desktop-site mode on mobile
     const loginWithGoogle = async () => {
-        const { error } = await supabase.auth.signInWithOAuth({
-            provider: 'google',
-            options: { redirectTo: window.location.origin + '/' }
-        });
-        if (error) {
-            return { success: false, message: error.message };
+        try {
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: window.location.origin + '/',
+                    skipBrowserRedirect: true  // Get the URL without redirecting
+                }
+            });
+            if (error) {
+                return { success: false, message: error.message };
+            }
+
+            const authUrl = data?.url;
+            if (!authUrl) {
+                return { success: false, message: 'Could not get Google login URL' };
+            }
+
+            // Open Google login in a popup window (avoids desktop-site issue on mobile)
+            const width = 500;
+            const height = 600;
+            const left = window.screenX + (window.outerWidth - width) / 2;
+            const top = window.screenY + (window.outerHeight - height) / 2;
+            const popup = window.open(
+                authUrl,
+                'google-login',
+                `width=${width},height=${height},left=${left},top=${top},popup=yes`
+            );
+
+            // If popup was blocked, fall back to redirect
+            if (!popup || popup.closed) {
+                window.location.href = authUrl;
+                return { success: true };
+            }
+
+            // Poll to detect when popup closes (Supabase onAuthStateChange handles the session)
+            const pollTimer = setInterval(() => {
+                if (popup.closed) {
+                    clearInterval(pollTimer);
+                }
+            }, 500);
+
+            return { success: true };
+        } catch (err) {
+            return { success: false, message: err.message || 'Login failed' };
         }
-        return { success: true };
     };
 
     const logout = async () => {
