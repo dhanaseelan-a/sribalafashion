@@ -652,9 +652,8 @@ h4 {
   text-align: center;
   position: relative;
   overflow: hidden;
-  width: calc(100% + 4rem);
-  margin-left: -2rem;
-  margin-right: -2rem;
+  width: 100vw;
+  margin-left: calc(-50vw + 50%);
   margin-top: -2rem;
   margin-bottom: 3rem;
   min-height: 100vh;
