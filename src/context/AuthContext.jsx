@@ -134,6 +134,19 @@ export const AuthProvider = ({ children }) => {
                         const jwtUser = getUserFromJwt(session.access_token);
                         if (jwtUser) setUser(jwtUser);
                         setLoading(false);
+
+                        // Fix mobile desktop-site issue: after OAuth callback,
+                        // the URL has a long #access_token hash that can trigger
+                        // Chrome mobile to enable "Request Desktop Site".
+                        // A clean redirect strips the hash and forces proper viewport,
+                        // which is exactly what a manual refresh does.
+                        const hash = window.location.hash;
+                        if (event === 'SIGNED_IN' && hash &&
+                            (hash.includes('access_token') || hash.includes('refresh_token'))) {
+                            window.location.replace(window.location.origin + window.location.pathname);
+                            return;
+                        }
+
                         // Skip duplicate sync if initAuth already handled this session
                         if (initDoneRef.current && event === 'SIGNED_IN') {
                             initDoneRef.current = false; // Reset for future events
@@ -187,53 +200,15 @@ export const AuthProvider = ({ children }) => {
         };
     }, [token]);
 
-    // Popup-based Google OAuth — avoids full-page redirect that triggers desktop-site mode on mobile
     const loginWithGoogle = async () => {
-        try {
-            const { data, error } = await supabase.auth.signInWithOAuth({
-                provider: 'google',
-                options: {
-                    redirectTo: window.location.origin + '/',
-                    skipBrowserRedirect: true  // Get the URL without redirecting
-                }
-            });
-            if (error) {
-                return { success: false, message: error.message };
-            }
-
-            const authUrl = data?.url;
-            if (!authUrl) {
-                return { success: false, message: 'Could not get Google login URL' };
-            }
-
-            // Open Google login in a popup window (avoids desktop-site issue on mobile)
-            const width = 500;
-            const height = 600;
-            const left = window.screenX + (window.outerWidth - width) / 2;
-            const top = window.screenY + (window.outerHeight - height) / 2;
-            const popup = window.open(
-                authUrl,
-                'google-login',
-                `width=${width},height=${height},left=${left},top=${top},popup=yes`
-            );
-
-            // If popup was blocked, fall back to redirect
-            if (!popup || popup.closed) {
-                window.location.href = authUrl;
-                return { success: true };
-            }
-
-            // Poll to detect when popup closes (Supabase onAuthStateChange handles the session)
-            const pollTimer = setInterval(() => {
-                if (popup.closed) {
-                    clearInterval(pollTimer);
-                }
-            }, 500);
-
-            return { success: true };
-        } catch (err) {
-            return { success: false, message: err.message || 'Login failed' };
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: { redirectTo: window.location.origin + '/' }
+        });
+        if (error) {
+            return { success: false, message: error.message };
         }
+        return { success: true };
     };
 
     const logout = async () => {
