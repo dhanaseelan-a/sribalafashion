@@ -95,6 +95,15 @@ export const AuthProvider = ({ children }) => {
     useEffect(() => {
         let mounted = true;
 
+        // Capture OAuth callback indicators SYNCHRONOUSLY before any async code.
+        // Supabase may use hash fragment (#access_token) or PKCE (?code=) flow.
+        // We must capture this BEFORE getSession() potentially cleans the URL.
+        const hash = window.location.hash || '';
+        const search = window.location.search || '';
+        const isOAuthCallback =
+            (hash.includes('access_token') || hash.includes('refresh_token')) ||
+            new URLSearchParams(search).has('code');
+
         const initAuth = async () => {
             try {
                 const { data: { session } } = await supabase.auth.getSession();
@@ -104,13 +113,26 @@ export const AuthProvider = ({ children }) => {
                     const jwtUser = getUserFromJwt(session.access_token);
                     if (jwtUser) setUser(jwtUser);
                     initDoneRef.current = true;
+
+                    // Fix mobile desktop-site issue: after Google OAuth redirect,
+                    // Chrome mobile sometimes enables "Request Desktop Site".
+                    // A clean redirect (stripping hash/code) forces a proper page load,
+                    // which resets the viewport — same as what a manual refresh does.
+                    if (isOAuthCallback) {
+                        // Small delay to let Supabase persist the session
+                        setTimeout(() => {
+                            window.location.replace(window.location.origin + '/');
+                        }, 100);
+                        return; // Don't call syncUserToBackend now; it'll run after reload
+                    }
+
                     // Sync role from backend in background (non-blocking)
                     syncUserToBackend(session.access_token);
                 }
             } catch (err) {
                 console.error('Auth init failed:', err);
             } finally {
-                if (mounted) setLoading(false);
+                if (mounted && !isOAuthCallback) setLoading(false);
             }
         };
 
@@ -134,18 +156,6 @@ export const AuthProvider = ({ children }) => {
                         const jwtUser = getUserFromJwt(session.access_token);
                         if (jwtUser) setUser(jwtUser);
                         setLoading(false);
-
-                        // Fix mobile desktop-site issue: after OAuth callback,
-                        // the URL has a long #access_token hash that can trigger
-                        // Chrome mobile to enable "Request Desktop Site".
-                        // A clean redirect strips the hash and forces proper viewport,
-                        // which is exactly what a manual refresh does.
-                        const hash = window.location.hash;
-                        if (event === 'SIGNED_IN' && hash &&
-                            (hash.includes('access_token') || hash.includes('refresh_token'))) {
-                            window.location.replace(window.location.origin + window.location.pathname);
-                            return;
-                        }
 
                         // Skip duplicate sync if initAuth already handled this session
                         if (initDoneRef.current && event === 'SIGNED_IN') {
