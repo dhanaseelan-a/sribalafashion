@@ -92,6 +92,7 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 img {
@@ -650,8 +651,9 @@ h4 {
   text-align: center;
   position: relative;
   overflow: hidden;
-  width: 100vw;
-  margin-left: calc(-50vw + 50%);
+  width: calc(100% + 4rem);
+  margin-left: -2rem;
+  margin-right: -2rem;
   margin-top: -2rem;
   margin-bottom: 3rem;
   min-height: 100vh;
